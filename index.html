@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Dashboard</title>
+    <title>Cyber Dashboard (Light)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
         body { 
@@ -16,211 +15,218 @@
             color: #0ff; 
             font-family: 'Share Tech Mono', monospace;
             overflow: hidden;
+            touch-action: none;
         }
-        .neon-text { text-shadow: 0 0 5px #0ff, 0 0 10px #0ff; }
-        .neon-border { box-shadow: 0 0 5px #0ff, inset 0 0 5px #0ff; border: 1px solid #0ff; }
-        .neon-green { color: #0f0; text-shadow: 0 0 5px #0f0; }
-        .neon-red { color: #f00; text-shadow: 0 0 5px #f00; }
-        /* グリッド背景 */
+        .neon-text { text-shadow: 0 0 5px #0ff; }
+        .neon-border { border: 1px solid #0ff; box-shadow: 0 0 5px #0ff, inset 0 0 5px rgba(0,255,255,0.2); }
         .cyber-grid {
             background-image: linear-gradient(rgba(0, 255, 255, 0.1) 1px, transparent 1px),
             linear-gradient(90deg, rgba(0, 255, 255, 0.1) 1px, transparent 1px);
             background-size: 20px 20px;
         }
+        .scanline {
+            width: 100%; height: 100px; z-index: 10;
+            background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(0, 255, 255, 0.1) 50%, rgba(0,0,0,0) 100%);
+            opacity: 0.1;
+            position: absolute; bottom: 100%;
+            animation: scanline 10s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes scanline { 0% { bottom: 100%; } 100% { bottom: -100%; } }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const { LineChart, Line, XAxis, YAxis, ResponsiveContainer } = Recharts;
 
-        // --- Icons (SVG) ---
+        // --- Simple SVG Icons ---
         const Icons = {
-            Wifi: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>,
-            Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1V4"/><path d="M15 1V4"/><path d="M9 20V23"/><path d="M15 20V23"/><path d="M20 9H23"/><path d="M20 14H23"/><path d="M1 9H4"/><path d="M1 14H4"/></svg>,
-            Disc: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            Cpu: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>,
+            Wifi: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" /></svg>
         };
 
-        // --- Circular Gauge Component ---
-        const Gauge = ({ value, label, color = "#0ff" }) => {
-            const radius = 35;
-            const circumference = 2 * Math.PI * radius;
-            const offset = circumference - (value / 100) * circumference;
+        // --- Custom Graph Component (No Library) ---
+        const SimpleGraph = ({ data, color }) => {
+            const width = 100;
+            const height = 50;
+            const maxVal = 100;
             
+            // データポイントをSVGの座標文字列に変換
+            const points = data.map((val, i) => {
+                const x = (i / (data.length - 1)) * width;
+                const y = height - (val / maxVal) * height;
+                return `${x},${y}`;
+            }).join(" ");
+
             return (
-                <div className="flex flex-col items-center justify-center relative w-24 h-24">
-                    <svg className="transform -rotate-90 w-24 h-24">
-                        <circle cx="48" cy="48" r={radius} stroke="#333" strokeWidth="6" fill="transparent" />
-                        <circle cx="48" cy="48" r={radius} stroke={color} strokeWidth="6" fill="transparent" 
-                            strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
-                            style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-                        />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-xl font-bold" style={{color}}>{Math.round(value)}%</span>
-                        <span className="text-[10px] text-slate-400 mt-1">{label}</span>
-                    </div>
-                </div>
+                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                    <polyline fill="none" stroke={color} strokeWidth="1" points={points} vectorEffect="non-scaling-stroke" />
+                    {/* Fill Area */}
+                    <polygon fill={color} fillOpacity="0.1" points={`0,${height} ${points} ${width},${height}`} />
+                </svg>
             );
         };
 
         const App = () => {
-            // --- State ---
             const [ip, setIp] = useState(() => localStorage.getItem("monitor_ip") || "");
             const [connected, setConnected] = useState(false);
-            const [data, setData] = useState({ cpu: 0, ram: 0, disk: 0, disk_free: "0GB", temp: 0, uptime: "00:00:00", up: 0, down: 0 });
-            const [history, setHistory] = useState(Array(20).fill({ up: 0, down: 0 }));
+            const [data, setData] = useState({ cpu: 0, ram: 0, temp: 0, up: 0, down: 0 });
+            // グラフ用履歴データ (0-100の範囲)
+            const [history, setHistory] = useState({
+                up: Array(30).fill(0),
+                down: Array(30).fill(0)
+            });
             const wsRef = useRef(null);
 
-            // --- WebSocket Connection ---
             const connect = () => {
                 if (!ip) return;
                 localStorage.setItem("monitor_ip", ip);
-                
                 if (wsRef.current) wsRef.current.close();
-                wsRef.current = new WebSocket(`ws://${ip}:8765`);
-
-                wsRef.current.onopen = () => setConnected(true);
-                wsRef.current.onclose = () => setConnected(false);
-                wsRef.current.onmessage = (event) => {
-                    const stats = JSON.parse(event.data);
-                    
-                    // 通信量差分計算 (簡易)
-                    // 本来は前回値との差分をとる必要がありますが、今回は演出としてランダム変動を加味したグラフにします
-                    const fakeTraffic = {
-                        up: Math.random() * 50,
-                        down: Math.random() * 80
+                
+                try {
+                    const ws = new WebSocket(`ws://${ip}:8765`);
+                    ws.onopen = () => setConnected(true);
+                    ws.onclose = () => setConnected(false);
+                    ws.onerror = (e) => {
+                        console.error(e);
+                        setConnected(false);
                     };
-
-                    setData(stats);
-                    setHistory(prev => [...prev.slice(1), fakeTraffic]);
-                };
+                    ws.onmessage = (event) => {
+                        const stats = JSON.parse(event.data);
+                        setData(stats);
+                        
+                        // グラフデータの更新 (ランダムな動きを少し混ぜて演出)
+                        setHistory(prev => ({
+                            up: [...prev.up.slice(1), Math.min(100, (stats.up % 100) + Math.random() * 20)],
+                            down: [...prev.down.slice(1), Math.min(100, (stats.down % 100) + Math.random() * 30)]
+                        }));
+                    };
+                    wsRef.current = ws;
+                } catch (e) {
+                    alert("接続エラー: IPを確認してください");
+                }
             };
 
             // 自動再接続
             useEffect(() => {
-                if(ip) connect();
-                const interval = setInterval(() => {
-                    if (wsRef.current?.readyState === WebSocket.CLOSED && ip) connect();
+                const timer = setInterval(() => {
+                    if (ip && (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED)) {
+                        connect();
+                    }
                 }, 3000);
-                return () => clearInterval(interval);
+                return () => clearInterval(timer);
             }, [ip]);
 
-            // 現在時刻
-            const [time, setTime] = useState(new Date());
-            useEffect(() => {
-                const timer = setInterval(() => setTime(new Date()), 1000);
-                return () => clearInterval(timer);
-            }, []);
-
-            // --- Initial Screen (IP Input) ---
+            // IP入力画面
             if (!connected && !data.cpu) {
                 return (
-                    <div className="h-screen w-full flex flex-col items-center justify-center bg-black text-[#0ff] cyber-grid p-6">
-                        <h1 className="text-4xl mb-8 neon-text tracking-widest">SYSTEM OFFLINE</h1>
-                        <div className="w-full max-w-sm neon-border p-6 bg-black/80 rounded-lg">
-                            <p className="mb-4 text-sm text-center">ENTER HOST IP ADDRESS</p>
+                    <div className="h-[100dvh] flex flex-col items-center justify-center p-6 bg-black text-[#0ff] cyber-grid relative">
+                        <div className="scanline"></div>
+                        <h1 className="text-4xl mb-2 font-bold tracking-widest neon-text">SYSTEM OFFLINE</h1>
+                        <div className="w-full max-w-sm border border-[#0ff] p-6 bg-black/80 rounded shadow-[0_0_20px_rgba(0,255,255,0.2)]">
+                            <p className="mb-2 text-xs">TARGET IP ADDRESS</p>
                             <input 
-                                type="text" 
-                                value={ip} 
-                                onChange={(e) => setIp(e.target.value)} 
-                                placeholder="192.168.x.x" 
-                                className="w-full bg-black border border-[#0ff] p-3 text-center text-xl mb-4 text-[#0ff] outline-none focus:bg-[#001111]"
+                                type="text" value={ip} onChange={(e) => setIp(e.target.value)} 
+                                placeholder="192.168.X.X" 
+                                className="w-full bg-black border border-[#0ff] p-3 text-xl text-center text-[#0ff] outline-none mb-4 focus:shadow-[0_0_10px_#0ff]"
                             />
                             <button onClick={connect} className="w-full bg-[#0ff] text-black font-bold p-3 hover:bg-white transition-colors">
-                                CONNECT
+                                INITIALIZE LINK
                             </button>
                         </div>
-                        <p className="mt-8 text-xs text-gray-500">RUN 'monitor.py' ON YOUR PC FIRST</p>
+                        <p className="mt-8 text-xs text-[#0ff]/50 animate-pulse">WAITING FOR SIGNAL...</p>
                     </div>
                 );
             }
 
-            // --- Main Dashboard ---
+            // メイン画面 (横画面推奨レイアウト)
             return (
                 <div className="h-[100dvh] w-full bg-black text-[#0ff] cyber-grid flex flex-col p-2 overflow-hidden relative">
+                    <div className="scanline"></div>
                     
                     {/* Header */}
-                    <header className="flex justify-between items-end border-b border-[#0ff]/30 pb-2 mb-2">
+                    <header className="flex justify-between items-start border-b border-[#0ff]/30 pb-1 mb-2 shrink-0">
                         <div>
-                            <h1 className="text-4xl neon-text leading-none">{time.toLocaleTimeString('en-US', {hour12:false})}</h1>
-                            <p className="text-xs text-[#0ff]/70 tracking-widest">{time.toDateString().toUpperCase()}</p>
+                            <div className="text-3xl font-bold leading-none neon-text">{data.uptime || "00:00:00"}</div>
+                            <div className="text-[10px] text-[#0ff]/50">SYS.UPTIME</div>
                         </div>
                         <div className="text-right">
-                            <div className="flex items-center justify-end gap-2 text-[#0f0]">
-                                <span className="animate-pulse text-xs">●</span>
-                                <span className="text-sm">ONLINE</span>
+                            <div className="flex items-center justify-end gap-1 text-[#0f0]">
+                                <span className="w-2 h-2 bg-[#0f0] rounded-full animate-pulse"></span>
+                                <span className="text-xs">CONNECTED</span>
                             </div>
-                            <p className="text-xs text-[#0ff]/50">{ip}</p>
+                            <div className="text-[10px] text-[#0ff]/50">{ip}</div>
                         </div>
                     </header>
 
-                    {/* Main Content: Responsive Grid */}
-                    {/* Portrait: Stacked, Landscape: Grid */}
-                    <main className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4 overflow-hidden">
+                    {/* Dashboard Grid */}
+                    <div className="flex-1 grid grid-cols-3 gap-2 min-h-0">
                         
-                        {/* 1. Resources Block */}
-                        <div className="neon-border bg-black/50 p-2 md:p-4 rounded flex flex-col justify-around relative overflow-hidden">
-                            <div className="absolute top-0 left-0 bg-[#0ff] text-black text-[10px] px-1 font-bold">RESOURCES</div>
-                            
-                            <div className="flex justify-around items-center h-full">
-                                <Gauge value={data.cpu} label="CPU" color={data.cpu > 80 ? '#f00' : '#0f0'} />
-                                <Gauge value={data.ram} label="RAM" color={data.ram > 80 ? '#ff0' : '#0ff'} />
-                                <div className="flex flex-col items-center justify-center w-24 h-24">
-                                    <div className="text-2xl font-bold neon-red">{Math.round(data.temp)}°C</div>
-                                    <div className="text-[10px] text-slate-400">GPU</div>
+                        {/* 1. CPU GAUGE */}
+                        <div className="col-span-1 neon-border bg-black/50 p-2 flex flex-col items-center justify-center relative">
+                            <div className="absolute top-1 left-1 text-[10px] bg-[#0ff] text-black px-1">CPU</div>
+                            <div className="relative w-24 h-24 flex items-center justify-center">
+                                <svg className="w-full h-full -rotate-90">
+                                    <circle cx="50%" cy="50%" r="40" stroke="#333" strokeWidth="8" fill="none" />
+                                    <circle cx="50%" cy="50%" r="40" stroke={data.cpu > 80 ? '#f00' : '#0ff'} strokeWidth="8" fill="none" 
+                                        strokeDasharray="251" strokeDashoffset={251 - (251 * data.cpu / 100)} 
+                                        className="transition-all duration-500" />
+                                </svg>
+                                <div className="absolute text-center">
+                                    <div className="text-2xl font-bold">{data.cpu}%</div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* 2. Network Graph Block */}
-                        <div className="neon-border bg-black/50 p-2 md:p-4 rounded flex flex-col relative md:col-span-1 lg:col-span-1">
-                            <div className="absolute top-0 left-0 bg-[#0ff] text-black text-[10px] px-1 font-bold">TRAFFIC</div>
-                            <div className="flex-1 w-full h-full min-h-[150px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={history}>
-                                        <XAxis dataKey="name" hide />
-                                        <YAxis hide domain={[0, 100]} />
-                                        <Line type="monotone" dataKey="up" stroke="#0f0" strokeWidth={2} dot={false} isAnimationActive={false} />
-                                        <Line type="monotone" dataKey="down" stroke="#a0f" strokeWidth={2} dot={false} isAnimationActive={false} />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <div className="flex justify-between text-xs mt-1">
-                                <span className="text-[#0f0]">UP: {Math.round(data.up / 1024)} KB/s</span>
-                                <span className="text-[#a0f]">DL: {Math.round(data.down / 1024)} KB/s</span>
+                        {/* 2. RAM GAUGE */}
+                        <div className="col-span-1 neon-border bg-black/50 p-2 flex flex-col items-center justify-center relative">
+                            <div className="absolute top-1 left-1 text-[10px] bg-[#0ff] text-black px-1">MEM</div>
+                            <div className="relative w-24 h-24 flex items-center justify-center">
+                                <svg className="w-full h-full -rotate-90">
+                                    <circle cx="50%" cy="50%" r="40" stroke="#333" strokeWidth="8" fill="none" />
+                                    <circle cx="50%" cy="50%" r="40" stroke="#f0f" strokeWidth="8" fill="none" 
+                                        strokeDasharray="251" strokeDashoffset={251 - (251 * data.ram / 100)} 
+                                        className="transition-all duration-500" />
+                                </svg>
+                                <div className="absolute text-center">
+                                    <div className="text-2xl font-bold text-[#f0f]">{data.ram}%</div>
+                                </div>
                             </div>
                         </div>
 
-                        {/* 3. Details Grid Block (Landscape: right side, Portrait: bottom) */}
-                        <div className="grid grid-cols-2 gap-2 md:grid-cols-1 lg:grid-cols-1 h-full">
-                            {/* Disk */}
-                            <div className="neon-border bg-black/50 p-2 rounded flex items-center justify-between relative">
-                                <div className="text-[#0ff]"><Icons.Disc /></div>
-                                <div className="text-right">
-                                    <div className="text-xs text-gray-400">DISK</div>
-                                    <div className="text-lg font-bold">{data.disk}%</div>
-                                    <div className="text-[10px] text-gray-500">FREE: {data.disk_free}</div>
-                                </div>
+                        {/* 3. TEMP / INFO */}
+                        <div className="col-span-1 flex flex-col gap-2">
+                            <div className="flex-1 neon-border bg-black/50 flex flex-col items-center justify-center relative">
+                                <div className="text-xs text-gray-400">TEMP</div>
+                                <div className="text-3xl font-bold text-[#ff0]">{data.temp}°C</div>
                             </div>
-                            
-                            {/* Uptime */}
-                            <div className="neon-border bg-black/50 p-2 rounded flex items-center justify-between relative">
-                                <div className="text-[#0f0]">UPTIME</div>
-                                <div className="text-right">
-                                    <div className="text-xl font-bold tracking-widest">{data.uptime}</div>
-                                </div>
-                            </div>
-
-                             {/* System Check */}
-                             <div className="neon-border bg-black/50 p-2 rounded relative col-span-2 md:col-span-1">
-                                <div className="text-[10px] text-gray-500 mb-1">> SYSTEM_CHECK...</div>
-                                <div className="text-xs text-[#0f0] typewriter">ALL SYSTEMS OPERATIONAL. NO THREATS DETECTED.</div>
+                            <div className="flex-1 neon-border bg-black/50 flex flex-col items-center justify-center relative">
+                                <div className="text-xs text-gray-400">DISK</div>
+                                <div className="text-xl font-bold">{data.disk}%</div>
                             </div>
                         </div>
 
-                    </main>
+                        {/* 4. TRAFFIC GRAPH (Wide) */}
+                        <div className="col-span-3 neon-border bg-black/50 p-2 flex flex-col relative h-[120px]">
+                            <div className="absolute top-0 left-0 bg-[#0ff] text-black text-[10px] px-1">NETWORK I/O</div>
+                            <div className="flex-1 w-full relative opacity-80 mt-2">
+                                {/* Upload Graph (Green) */}
+                                <div className="absolute inset-0">
+                                    <SimpleGraph data={history.up} color="#0f0" />
+                                </div>
+                                {/* Download Graph (Purple) */}
+                                <div className="absolute inset-0 mix-blend-screen">
+                                    <SimpleGraph data={history.down} color="#f0f" />
+                                </div>
+                            </div>
+                            <div className="flex justify-between text-[10px] mt-1 font-mono">
+                                <span className="text-[#0f0]">▲ UP TRAFFIC</span>
+                                <span className="text-[#f0f]">▼ DOWN TRAFFIC</span>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             );
         };
